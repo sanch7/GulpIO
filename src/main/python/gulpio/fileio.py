@@ -237,38 +237,38 @@ class ChunkWriter(object):
 
     def write_chunk(self, input_chunk, input_slice):
         with input_chunk.open('wb'):
-            for video in self.adapter.iter_data(input_slice):
-                id_ = video['id']
-                meta_information = video['meta']
-                frames = video['frames']
+            for element in self.adapter.iter_data(input_slice):
+                id_ = element['id']
+                meta_information = element['meta']
+                frames = element['frames']
                 if len(frames) > 0:
                     input_chunk.append_meta(id_, meta_information)
                     for frame in frames:
                         input_chunk.write_frame(id_, frame)
                 else:
-                    print("Failed to write video with id: {}; no frames"
+                    print("Failed to write element with id: {}; no frames"
                           .format(id_))
 
 
-def calculate_chunk_slices(videos_per_chunk, num_videos):
-    assert videos_per_chunk > 0
-    assert num_videos > 0
-    return [slice(i, min(i + videos_per_chunk, num_videos))
-            for i in range(0, num_videos, videos_per_chunk)]
+def calculate_chunk_slices(elements_per_chunk, num_elements):
+    assert elements_per_chunk > 0
+    assert num_elements > 0
+    return [slice(i, min(i + elements_per_chunk, num_elements))
+            for i in range(0, num_elements, elements_per_chunk)]
 
 
 class GulpIngestor(object):
 
-    def __init__(self, adapter, output_folder, videos_per_chunk, num_workers):
+    def __init__(self, adapter, output_folder, elements_per_chunk, num_workers):
         assert num_workers > 0
         self.adapter = adapter
         self.output_folder = output_folder
-        self.videos_per_chunk = videos_per_chunk
+        self.elements_per_chunk = elements_per_chunk
         self.num_workers = num_workers
 
     def __call__(self):
         ensure_output_dir_exists(self.output_folder)
-        chunk_slices = calculate_chunk_slices(self.videos_per_chunk,
+        chunk_slices = calculate_chunk_slices(self.elements_per_chunk,
                                               len(self.adapter))
         gulp_directory = GulpDirectory(self.output_folder)
         new_chunks = gulp_directory.new_chunks(len(chunk_slices))
