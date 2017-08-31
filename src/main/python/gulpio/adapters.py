@@ -129,6 +129,99 @@ class Custom20BNJsonVideoAdapter(AbstractDatasetAdapter,
             self.write_label2idx_dict()
 
 
+class Custom20BNAdapterMultipleLabelsMixin(object):
+
+    def check_if_label2idx_exists(self):
+        return os.path.exists(os.path.join(self.output_folder, 'label2idx.json'))
+
+    def read_label2idx(self):
+        with open(os.path.join(self.output_folder, 'label2idx.json'), 'r') as f:
+            content = json.load(f)
+        return content
+
+    def create_label2idx_dict(self, label_name, class_label_name):
+        labels = sorted(set([item[label_name][class_label_name] for item in self.data]))
+        labels2idx = {}
+        print("creating labels in new adapter")
+        if self.check_if_label2idx_exists():
+            labels2idx = self.read_label2idx()
+        label_counter = len(labels2idx)
+        for label in labels:
+            if label not in labels2idx.keys():
+                labels2idx[label] = label_counter
+                label_counter += 1
+        return labels2idx
+
+    def write_label2idx_dict(self):
+        json.dump(self.labels2idx,
+                  open(os.path.join(self.output_folder, 'label2idx.json'),
+                       'w'))
+
+
+class Custom20BNMultipleLabelsAdapter(AbstractDatasetAdapter,
+                                      Custom20BNAdapterMultipleLabelsMixin):
+
+    def __init__(self, json_file, folder, output_folder,
+                 shuffle=False, frame_size=-1, frame_rate=8,
+                 shm_dir_path='/dev/shm', label_name='labels',
+                 class_label_name='class_label'):
+
+        self.json_file = json_file
+        if json_file.endswith('.json.gz'):
+            self.data = self.read_gz_json(json_file)
+        elif json_file.endswith('.json'):
+            self.data = self.read_json(json_file)
+        else:
+            raise RuntimeError('Wrong data file format (.json.gz or .json)')
+        self.label_name = label_name
+        self.class_label_name = class_label_name
+        self.output_folder = output_folder
+        self.labels2idx = self.create_label2idx_dict(self.label_name, self.class_label_name)
+        self.folder = folder
+        self.shuffle = bool(shuffle)
+        self.frame_size = int(frame_size)
+        self.frame_rate = int(frame_rate)
+        self.shm_dir_path = shm_dir_path
+        self.all_meta = self.get_meta()
+        if self.shuffle:
+            random.shuffle(self.all_meta)
+
+    def read_json(self, json_file):
+        with open(json_file, 'r') as f:
+            content = json.load(f)
+        return content
+
+    def read_gz_json(self, gz_json_file):
+        with gzip.open(gz_json_file, 'rt') as fp:
+            content = json.load(fp)
+        return content
+
+    def get_meta(self):
+        return [{'id': entry['id'],
+                 'label': entry[self.label_name],
+                 'idx': self.labels2idx[entry[self.label_name][self.class_label_name]]}
+                for entry in self.data]
+
+    def __len__(self):
+        return len(self.data)
+
+    def iter_data(self, slice_element=None):
+        slice_element = slice_element or slice(0, len(self))
+        for meta in self.all_meta[slice_element]:
+            video_folder = os.path.join(self.folder, str(meta['id']))
+            video_path = get_single_video_path(video_folder, format_='mp4')
+            with temp_dir_for_bursting(self.shm_dir_path) as temp_burst_dir:
+                frame_paths = burst_video_into_frames(
+                    video_path, temp_burst_dir, frame_rate=self.frame_rate)
+                frames = list(resize_images(frame_paths, self.frame_size))
+            result = {'meta': meta,
+                      'frames': frames,
+                      'id': meta['id']}
+            yield result
+        else:
+            self.write_label2idx_dict()
+
+
 class Custom20BNCsvJpegAdapter(AbstractDatasetAdapter,
                                Custom20BNAdapterMixin):
     """ Adapter for 20BN datasets specified by CSV file and JPEG frames. """
