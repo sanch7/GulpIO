@@ -138,6 +138,85 @@ class Custom20BNJsonVideoAdapter(AbstractDatasetAdapter,
             self.write_label2idx_dict()
 
 
+class Custom20BNJsonVideoAdapterAirMouse(AbstractDatasetAdapter,
+                                         Custom20BNAdapterMixin):
+    """ Adapter for 20BN datasets specified by JSON file and MP4 videos. """
+
+    def __init__(self, json_file, folder, output_folder,
+                 shuffle=False, frame_size=-1, frame_rate=20,
+                 shm_dir_path='/dev/shm', label_name='label',
+                 remove_duplicate_ids=False):
+        self.json_file = json_file
+        if json_file.endswith('.json.gz'):
+            self.data = self.read_gz_json(json_file)
+        elif json_file.endswith('.json'):
+            self.data = self.read_json(json_file)
+        else:
+            raise RuntimeError('Wrong data file format (.json.gz or .json)')
+        self.label_name = 'label'
+        self.output_folder = output_folder
+        self.labels2idx = self.create_label2idx_dict(self.label_name)
+        self.folder = folder
+        self.shuffle = bool(shuffle)
+        self.frame_size = int(frame_size)
+        self.frame_rate = int(frame_rate)
+        self.shm_dir_path = shm_dir_path
+        self.all_meta = self.get_meta()
+        if remove_duplicate_ids:
+            self.all_meta = remove_entries_with_duplicate_ids(
+                self.output_folder, self.all_meta)
+        if self.shuffle:
+            random.shuffle(self.all_meta)
+
+    def read_json(self, json_file):
+        with open(json_file, 'r') as f:
+            content = json.load(f)
+        return content
+
+    def read_gz_json(self, gz_json_file):
+        with gzip.open(gz_json_file, 'rt') as fp:
+            content = json.load(fp)
+        return content
+
+    def get_meta(self):
+        return [{'id': entry['id'],
+                 'dot_positions': entry["dot_positions"],
+                 'label': entry[self.label_name],
+                 'idx': self.labels2idx[entry[self.label_name]]}
+                for entry in self.data
+                if not (entry['height'] == 480 and entry['width'] == 640)]
+
+    def __len__(self):
+        return len(self.all_meta)
+
+    def iter_data(self, slice_element=None):
+        slice_element = slice_element or slice(0, len(self))
+        for meta in self.all_meta[slice_element]:
+            video_folder = os.path.join(self.folder, str(meta['id']))
+            video_path = get_single_video_path(video_folder, format_='mp4')
+            with temp_dir_for_bursting(self.shm_dir_path) as temp_burst_dir:
+                frame_paths = burst_video_into_frames(
+                    video_path, temp_burst_dir, frame_rate=self.frame_rate)
+                frames = list(resize_images(frame_paths, self.frame_size))
+                # getting the corresponding dot positions and frames
+                dot_positions = meta['dot_positions'].split('|')[:-1]
+                num_data_points = min(len(frames), len(dot_positions))
+                frames = frames[:num_data_points]
+                dot_positions = dot_positions[:num_data_points]
+            result = {'meta': {'id': meta['id'],
+                               'label': meta[self.label_name],
+                               'idx': self.labels2idx[meta[self.label_name]],
+                               'dot_positions': dot_positions},
+                      'frames': frames,
+                      'id': meta['id']}
+            # print(result['dot_positions'])
+            # import sys
+            # sys.exit()
+            yield result
+        else:
+            self.write_label2idx_dict()
+
+
 class Custom20BNCsvWebmAdapter(AbstractDatasetAdapter,
                                Custom20BNAdapterMixin):
     """ Adapter for 20BN datasets specified by CSV file and WEBM videos. """
