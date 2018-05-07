@@ -197,6 +197,11 @@ class Custom20BNJsonVideoAdapterAirMouse(AbstractDatasetAdapter,
                     video_path, temp_burst_dir, frame_rate=self.frame_rate)
                 frames = list(resize_images(frame_paths, self.frame_size))
                 # getting the corresponding dot positions and frames
+                if type(meta['overlay_data']) == dict:
+                    dot_positions = meta['overlay_data']['path']
+                else:
+                    dot_positions = meta['overlay_data']
+
                 num_data_points = min(len(frames), len(dot_positions))
                 frames = frames[:num_data_points]
                 dot_positions = dot_positions[:num_data_points]
