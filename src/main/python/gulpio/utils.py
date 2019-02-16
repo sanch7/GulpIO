@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import os
+import subprocess
 import sh
 import random
 import cv2
@@ -19,7 +20,7 @@ class FFMPEGNotFound(Exception):
 
 
 def check_ffmpeg_exists():
-    return os.system('ffmpeg -version > /dev/null') == 0
+    return subprocess.call(["ffmpeg", "-version"], stdout=subprocess.DEVNULL) == 0
 
 
 @contextmanager
